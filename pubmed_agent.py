@@ -2,6 +2,7 @@ import os
 import requests
 import xml.etree.ElementTree as ET
 import json
+import time
 from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
@@ -56,7 +57,7 @@ def fetch_pubmed_articles(query, days=7):
         
     return articles_data
 
-# 3. Analyysi Geminillä
+# 3. Analyysi Geminillä (sisältää automaattisen retry-logiikan ruuhkan varalle)
 def process_articles_with_gemini(articles):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
@@ -74,16 +75,24 @@ def process_articles_with_gemini(articles):
     {articles}
     """
     
-    response = client.models.generate_content(
-        model='gemini-3.8-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=ResearchReport,
-        ),
-    )
-    
-    return response.text
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model='gemini-3.8-flash',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=ResearchReport,
+                ),
+            )
+            return response.text
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Googlen palvelimella ruuhkaa ({e}). Odotetaan 10 sekuntia ja yritetään uudelleen ({attempt + 1}/{max_retries})...")
+                time.sleep(10)
+            else:
+                raise e
 
 # 4. Verkkosivun (HTML) generointi
 def generate_html_page(json_data_str):
