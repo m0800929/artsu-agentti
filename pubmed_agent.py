@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from google import genai
 from google.genai import types
 
-# 1. Määritetään rakenne Pydanticilla structured outputia varten
+# 1. Määritetään rakenne Pydanticilla
 class ArticleSummary(BaseModel):
     title: str = Field(description="Tutkimuksen otsikko suomeksi käännettynä")
     original_title: str = Field(description="Tutkimuksen alkuperäinen englanninkielinen otsikko")
@@ -17,11 +17,10 @@ class ResearchReport(BaseModel):
     weekly_summary: str = Field(description="Yleiskatsaus viikon tutkimustrendeistä")
     articles: list[ArticleSummary]
 
+# 2. Haku PubMedistä
 def fetch_pubmed_articles(query, days=7):
-    """Hakee PubMedistä viimeisimmät artikkelit XML-muodossa."""
     base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
     
-    # 1. Haku (esearch)
     search_url = f"{base_url}esearch.fcgi?db=pubmed&term={query}&reldate={days}&datetype=edat&retmode=json&retmax=10"
     res = requests.get(search_url).json()
     id_list = res.get("esearchresult", {}).get("idlist", [])
@@ -29,18 +28,17 @@ def fetch_pubmed_articles(query, days=7):
     if not id_list:
         return []
     
-    # 2. Tiedot (efetch)
     ids = ",".join(id_list)
     fetch_url = f"{base_url}efetch.fcgi?db=pubmed&id={ids}&retmode=xml"
     fetch_res = requests.get(fetch_url)
     
-    # Parsitaan XML
     root = ET.fromstring(fetch_res.content)
     articles_data = []
     
     for article in root.findall(".//PubmedArticle"):
         title = article.findtext(".//ArticleTitle", default="Ei otsikkoa")
-        abstract = "".join([elem.text for elem in article.findall(".//AbstractText") if elem.text])
+        abstract_elements = article.findall(".//AbstractText")
+        abstract = " ".join([elem.text for elem in abstract_elements if elem.text])
         pub_date = article.findtext(".//Journal/JournalIssue/PubDate/Year", default="Tuntematon")
         
         articles_data.append({
@@ -51,8 +49,8 @@ def fetch_pubmed_articles(query, days=7):
         
     return articles_data
 
+# 3. Analyysi Geminillä
 def process_articles_with_gemini(articles):
-    """Analysoi artikkelit Gemini API:lla ja palauttaa rakenteellisen JSON-raportin."""
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY puuttuu ympäristömuuttujista!")
@@ -79,8 +77,8 @@ def process_articles_with_gemini(articles):
     
     return response.text
 
+# 4. Pääohjelma
 if __name__ == "__main__":
-    # Hakusana: raskauteen, synnytykseen ja välilihaan liittyvät aiheet
     search_query = "(pregnancy OR childbirth OR perineal) AND (midwifery OR perinatology)"
     
     print("Haetaan artikkeleita PubMedistä...")
@@ -95,7 +93,6 @@ if __name__ == "__main__":
         print("\n--- VIIKOITTAINEN TIEDERAPORTTI ---\n")
         print(report)
         
-        # Tallennetaan raportti tiedostoon
         with open("latest_report.json", "w", encoding="utf-8") as f:
             f.write(report)
         print("\nRaportti tallennettu tiedostoon latest_report.json")
