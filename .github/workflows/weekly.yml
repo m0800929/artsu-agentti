@@ -1,0 +1,27 @@
+name: Viikoittainen Tiedesähköposti
+
+on:
+  schedule:
+    # Aja automaattisesti joka maanantai klo 08:00 UTC (klo 10:00 Suomen aikaa)
+    - cron: '0 8 * * 1'
+  workflow_dispatch: # Mahdollistaa ajamisen myös käsin milloin vain
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hae koodi
+        uses: actions/checkout@v4
+
+      - name: Asenna Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Asenna vaaditut kirjastot
+        run: pip install requests google-genai pydantic
+
+      - name: Suorita tutkimusagentti
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python pubmed_agent.py
